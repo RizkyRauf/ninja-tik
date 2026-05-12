@@ -16,6 +16,10 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
 ]
+api = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

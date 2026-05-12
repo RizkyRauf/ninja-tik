@@ -15,10 +15,7 @@ class TikNinjaVideoClient(TikNinjaBaseClient):
     """Client for fetching TikTok video data."""
 
     async def _resolve_user_ids(self, unique_ids: list[str]) -> dict[str, str]:
-        """Resolve multiple usernames to user IDs concurrently.
-
-        Returns dict mapping username -> user_id.
-        """
+        """Resolve multiple usernames to user IDs concurrently."""
         user_client = TikNinjaUserClient(headers=self._headers)
         results = await user_client.get_users(unique_ids)
 
@@ -29,10 +26,7 @@ class TikNinjaVideoClient(TikNinjaBaseClient):
         return mapping
 
     async def get_posts(self, user_id: str = "", unique_id: str = "", cursor: str = "0", count: int = 20) -> VideoListResponse:
-        """Fetch one page of TikTok user videos.
-
-        Accepts either user_id (numeric) or unique_id (username).
-        """
+        """Fetch one page of TikTok user videos."""
         if unique_id and not user_id:
             resolved = await self._resolve_user_ids([unique_id])
             user_id = resolved.get(unique_id)
@@ -41,7 +35,7 @@ class TikNinjaVideoClient(TikNinjaBaseClient):
 
         async with self._new_session() as session:
             try:
-                token = await self._fetch_token(session)
+                await self._fetch_token(session)
             except TokenFetchError as e:
                 return VideoListResponse(error=str(e))
 
@@ -52,30 +46,26 @@ class TikNinjaVideoClient(TikNinjaBaseClient):
                 "count": count,
             })
 
-            async with session.post(API_URL, headers=self._api_headers(token), data=payload) as resp:
-                if resp.status != 200:
-                    body = await resp.text()
-                    return VideoListResponse(error=f"HTTP {resp.status}: {body}")
+            result_data = await self._post_with_retry(session, API_URL, payload)
+            if result_data.status != 200:
+                return VideoListResponse(error=f"HTTP {result_data.status}: {result_data.body}")
 
-                result = await resp.json()
-                if not result.get("ok"):
-                    return VideoListResponse(error=result.get("error", "Unknown error"), raw=result)
+            result = json.loads(result_data.body)
+            if not result.get("ok"):
+                return VideoListResponse(error=result.get("error", "Unknown error"), raw=result)
 
-                videos = [TikTokVideo.from_api(v) for v in result["data"]["videos"]]
+            videos = [TikTokVideo.from_api(v) for v in result["data"]["videos"]]
 
-                return VideoListResponse(
-                    success=True,
-                    videos=videos,
-                    cursor=result["data"].get("cursor", ""),
-                    has_more=result["data"].get("hasMore", False),
-                    raw=result,
-                )
+            return VideoListResponse(
+                success=True,
+                videos=videos,
+                cursor=result["data"].get("cursor", ""),
+                has_more=result["data"].get("hasMore", False),
+                raw=result,
+            )
 
     async def get_all_posts(self, user_id: str = "", unique_id: str = "", limit: int = 0, page_size: int = 20) -> list[TikTokVideo]:
-        """Fetch all or limited number of videos with auto-pagination.
-
-        Accepts either user_id (numeric) or unique_id (username).
-        """
+        """Fetch all or limited number of videos with auto-pagination."""
         if unique_id and not user_id:
             resolved = await self._resolve_user_ids([unique_id])
             user_id = resolved.get(unique_id)
@@ -104,16 +94,7 @@ class TikNinjaVideoClient(TikNinjaBaseClient):
         return all_videos
 
     async def get_all_posts_multi(self, unique_ids: list[str], limit: int = 0, page_size: int = 20) -> dict[str, list[TikTokVideo]]:
-        """Fetch videos for multiple usernames concurrently.
-
-        Args:
-            unique_ids: List of TikTok usernames
-            limit: Max videos per user (0 = fetch all)
-            page_size: Videos per request
-
-        Returns:
-            Dict mapping username -> list of videos
-        """
+        """Fetch videos for multiple usernames concurrently."""
         resolved = await self._resolve_user_ids(unique_ids)
 
         async def fetch_user(username: str, uid: str) -> tuple[str, list[TikTokVideo]]:

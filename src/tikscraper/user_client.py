@@ -17,7 +17,7 @@ class TikNinjaUserClient(TikNinjaBaseClient):
         """Fetch TikTok user data by username."""
         async with self._new_session() as session:
             try:
-                token = await self._fetch_token(session)
+                await self._fetch_token(session)
             except TokenFetchError as e:
                 return TikTokResponse(error=str(e))
 
@@ -26,20 +26,19 @@ class TikNinjaUserClient(TikNinjaBaseClient):
                 "unique_id": unique_id,
             })
 
-            async with session.post(API_URL, headers=self._api_headers(token), data=payload) as resp:
-                if resp.status != 200:
-                    body = await resp.text()
-                    return TikTokResponse(error=f"HTTP {resp.status}: {body}")
+            result_data = await self._post_with_retry(session, API_URL, payload)
+            if result_data.status != 200:
+                return TikTokResponse(error=f"HTTP {result_data.status}: {result_data.body}")
 
-                result = await resp.json()
-                if not result.get("ok"):
-                    return TikTokResponse(error=result.get("error", "Unknown error"), raw=result)
+            result = json.loads(result_data.body)
+            if not result.get("ok"):
+                return TikTokResponse(error=result.get("error", "Unknown error"), raw=result)
 
-                return TikTokResponse(
-                    success=True,
-                    data=TikTokUser.from_api(result["data"]["user"], result["data"]["stats"]),
-                    raw=result,
-                )
+            return TikTokResponse(
+                success=True,
+                data=TikTokUser.from_api(result["data"]["user"], result["data"]["stats"]),
+                raw=result,
+            )
 
     async def get_users(self, unique_ids: list[str]) -> list[TikTokResponse]:
         """Fetch multiple users concurrently."""

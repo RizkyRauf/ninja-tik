@@ -3,3 +3,4 @@ __pycache__/
 *.egg-info/
 .env
 main_search.py
+downloaded_files/
